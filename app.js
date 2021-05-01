@@ -6,8 +6,10 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
-// initializing express & using ejs
+//const encrypt = require("mongoose-encryption"); changed to hashing (md5)
+//const md5 = require('md5'); changed to bcrypt
+const bcrypt = require('bcrypt');
+// initializing express & using ejs 
 
 const app = express();
 app.set('view engine', 'ejs');
@@ -15,7 +17,8 @@ app.set('view engine', 'ejs');
 /////////////// DB stuff //////////////////////
 mongoose.connect("mongodb://localhost:27017/userDB", {
     useNewUrlParser: true,
-    useUnifiedTopology: true
+    useUnifiedTopology: true,
+    useCreateIndex: true
 });
 
 const userSchema = new mongoose.Schema({
@@ -31,7 +34,10 @@ const userSchema = new mongoose.Schema({
 });
 //mongoose-encryption
 //const secret = "wachal3awdbikhir"; //  CHECK .ENV FILE
-userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ["password"] }); //add encryption to passwd
+//userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ["password"] }); //add encryption to passwd
+
+//this is salting rounds for bcrypt hash
+const saltRounds = 10;
 
 const User = new mongoose.model('User', userSchema);
 
@@ -59,15 +65,18 @@ app.listen(3000, function() {
 
 //post requests
 app.post("/register", function(req, res) {
-    const user = new User({
-        email: req.body.username,
-        password: req.body.password
+    bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
+        const user = new User({
+            email: req.body.username,
+            password: hash
+        });
+        user.save(function(err) {
+            if (err)
+                console.log(err);
+            else res.render('secrets');
+        })
     });
-    user.save(function(err) {
-        if (err)
-            console.log(err);
-        else res.render('secrets');
-    })
+
 });
 app.post("/login", function(req, res) {
     User.findOne({
@@ -76,11 +85,16 @@ app.post("/login", function(req, res) {
         function(err, data) {
             if (err)
                 console.log(err);
-            else if (data.password === req.body.password) {
-                res.render('secrets');
-            } else {
-                res.render('login');
-                console.log("mal9it walu ?!");
+            else {
+                bcrypt.compare(req.body.password, data.password, function(err, rst) {
+                    if (rst)
+                        res.render('secrets');
+                    else {
+                        res.render('login');
+                        console.log("mal9it walu ?!");
+                    }
+                })
+
             }
         }
     );
